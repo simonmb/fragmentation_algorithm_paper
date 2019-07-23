@@ -23,19 +23,11 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.'''
 
+# tested with Python 3.6.8 and RDKit version 2017.09.3
+
 import operator
 from fragmenter import fragmenter
-try:
-    from rdkit import Chem
-except:
-    raise Exception('RDkit has to be installed.')
-
-def fix_SMILES(SMILES):
-    SMILES = SMILES.replace('[1H]', '')
-    SMILES = SMILES.replace('[2H]', '')
-    SMILES = SMILES.replace('[3H]', '')
-    SMILES = SMILES.replace('[H]', '')
-    return SMILES
+from rdkit import Chem
 
 def info_to_CSV(inchikey, SMILES, pubchem_id, fragmentation):
     
@@ -77,7 +69,7 @@ def function_to_choose_fragmentation(fragmentations):
 def is_fragmentation_equal_to_other_fragmentation(fragmentation, other_fragmentation):
     
     for group_number, amount in fragmentation.items():
-        if other_fragmentation.has_key(group_number):
+        if group_number in other_fragmentation:
             if fragmentation[group_number] != other_fragmentation[group_number]:
                 return False
     return True
@@ -94,7 +86,7 @@ def log_structure_results(f, pubchem_id, SMILES, inchikey, success, fragmentatio
     
     if success:
         f.write('Fragmentation from the algorithm:\n')
-        sorted_group_number = sorted(fragmentation.iterkeys())
+        sorted_group_number = sorted(fragmentation.keys())
         
         for group_number in sorted_group_number:
             f.write((UNIFAC_SMARTS[group_number - 1][0]).ljust(12, ' ') + '\t' + str(group_number).ljust(8, ' ') + str(fragmentation[group_number]).ljust(8, ' ') + '\n')
@@ -103,7 +95,7 @@ def log_structure_results(f, pubchem_id, SMILES, inchikey, success, fragmentatio
     
     if len(fragmentation_reference_DB) > 0:
         f.write('Fragmentation from the reference database:\n')
-        sorted_group_number = sorted(fragmentation_reference_DB.iterkeys())
+        sorted_group_number = sorted(fragmentation_reference_DB.keys())
         
         for group_number in sorted_group_number:
             f.write((UNIFAC_SMARTS[group_number - 1][0]).ljust(12, ' ') + '\t' + str(group_number).ljust(8, ' ') + str(fragmentation_reference_DB[group_number]).ljust(8, ' ') + '\n')
@@ -270,6 +262,12 @@ sorted_pattern_descriptors = sorted(pattern_descriptors.items(), key=operator.it
 sorted_group_numbers = [i[0] for i in sorted_pattern_descriptors]
 
 
+#for t in sorted_pattern_descriptors:
+#    print t
+#    
+#
+#gg
+
 # first step: fragment reference database and compare with the results
 reference_DB = []
 with open('reference_DB.csv') as f:
@@ -289,8 +287,9 @@ simple_fragmenter = fragmenter(fragmentation_scheme, 'simple')
 complete_fragmenter = fragmenter(fragmentation_scheme, 'complete', 20, function_to_choose_fragmentation)
 
 # without sorting the patterns
-print '####################################################################'
-print 'Fragmenting the reference database without the patterns sorted (simple and complete algorithm)'
+print('####################################################################')
+print('Fragmenting the reference database without the patterns sorted (simple and complete algorithm)')
+
 i_structure = 0
 f_simple = open('reference_DB_simple_fragmentation_without_pattern_sorting_results.log','w+')
 f_complete = open('reference_DB_complete_fragmentation_without_pattern_sorting_results.log','w+')
@@ -298,13 +297,13 @@ for inchikey, SMILES, pubchem_id, fragmentation_reference_DB in reference_DB:
     
     i_structure = i_structure + 1
     if i_structure % 2000 == 0:
-        print '{:2.1f} .'.format((100.0 * i_structure) / len(reference_DB)),
+        print('{:2.1f} .'.format((100.0 * i_structure) / len(reference_DB)), end=" ")
         
     lines = []
     
     
     for group_number, amount in fragmentation_reference_DB.items():
-        if not reference_DB_fragmentation_stats.has_key(group_number):
+        if not group_number in reference_DB_fragmentation_stats:
             reference_DB_fragmentation_stats[group_number] = 0
             
         reference_DB_fragmentation_stats[group_number] += amount
@@ -338,16 +337,20 @@ f_simple.close()
 f_complete.close()
 
 
-print ''
-print 'N_structures(simple): ' + str(len(reference_DB))
-print 'N_fragmented(simple): ' + str(len(simple_fragmenter_fragmented)) + "(" + str((1.0 * len(simple_fragmenter_fragmented)) / len(reference_DB)) + ")"
-print 'N_fragmented_and_equal(simple): ' + str(len(simple_fragmenter_fragmented_and_equal_to_reference_DB)) + "(" + str((1.0 * len(simple_fragmenter_fragmented_and_equal_to_reference_DB)) / len(reference_DB)) + ")"
-print ''
-print 'N_structures(complete):' + str(len(right_size_for_complete_fragmenter))
-print 'N_fragmented(complete): ' + str(len(complete_fragmenter_fragmented)) + "(" + str((1.0 * len(complete_fragmenter_fragmented)) / len(right_size_for_complete_fragmenter)) + ")"
-print 'N_fragmented_and_equal(complete): ' + str(len(complete_fragmenter_fragmented_and_equal_to_reference_DB)) + "(" + str((1.0 * len(complete_fragmenter_fragmented_and_equal_to_reference_DB)) / len(right_size_for_complete_fragmenter)) + ")"
-print ''
-print ''
+print('')
+print('N_structures(simple): ' + str(len(reference_DB)))
+print('N_fragmented(simple): ' + str(len(simple_fragmenter_fragmented)) + "(" + str((1.0 * len(simple_fragmenter_fragmented)) / len(reference_DB)) + ")")
+print('N_fragmented_and_equal(simple): ' + str(len(simple_fragmenter_fragmented_and_equal_to_reference_DB)) + "(" + str((1.0 * len(simple_fragmenter_fragmented_and_equal_to_reference_DB)) / len(reference_DB)) + ")")
+print('')
+print('N_structures(complete):' + str(len(right_size_for_complete_fragmenter)))
+print('N_fragmented(complete): ' + str(len(complete_fragmenter_fragmented)) + "(" + str((1.0 * len(complete_fragmenter_fragmented)) / len(right_size_for_complete_fragmenter)) + ")")
+print('N_fragmented_and_equal(complete): ' + str(len(complete_fragmenter_fragmented_and_equal_to_reference_DB)) + "(" + str((1.0 * len(complete_fragmenter_fragmented_and_equal_to_reference_DB)) / len(right_size_for_complete_fragmenter)) + ")")
+print('')
+print('')
+print('')
+print('')
+
+right_size_for_complete_fragmenter2 = []
 
 # with sorting the patterns
 simple_fragmenter.fragmentation_scheme_order = sorted_group_numbers
@@ -358,18 +361,20 @@ simple_fragmenter_sorted_fragmented_and_equal_to_reference_DB = []
 complete_fragmenter_sorted_fragmented = []
 complete_fragmenter_sorted_fragmented_and_equal_to_reference_DB = []
 
-right_size_for_complete_fragmenter2 = []
-print '####################################################################'
-print 'Fragmenting the reference database with the patterns sorted (simple and complete algorithm)'
+
+print('####################################################################')
+print('Fragmenting the reference database with the patterns sorted (simple and complete algorithm)')
 i_structure = 0
 f_simple = open('reference_DB_simple_fragmentation_with_pattern_sorting_results.log','w+')
 f_complete = open('reference_DB_complete_fragmentation_with_pattern_sorting_results.log','w+')
 for inchikey, SMILES, pubchem_id, fragmentation_reference_DB in reference_DB:   
-             
+
+    
     i_structure = i_structure + 1
+    
     if i_structure % 2000 == 0:
-        print '{:2.1f} .'.format((100.0 * i_structure) / len(reference_DB)),
-        
+        print('{:2.1f} .'.format((100.0 * i_structure) / len(reference_DB)), end=" ")
+    
     fragmentation, success = simple_fragmenter.fragment(SMILES)
     if success:
         simple_fragmenter_sorted_fragmented.append(inchikey)
@@ -397,16 +402,18 @@ for inchikey, SMILES, pubchem_id, fragmentation_reference_DB in reference_DB:
 f_simple.close()
 f_complete.close()
   
-print ''
-print 'N_structures(simple): ' + str(len(reference_DB))
-print 'N_fragmented(simple): ' + str(len(simple_fragmenter_sorted_fragmented)) + "(" + str((1.0 * len(simple_fragmenter_sorted_fragmented)) / len(reference_DB)) + ")"
-print 'N_fragmented_and_equal(simple): ' + str(len(simple_fragmenter_sorted_fragmented_and_equal_to_reference_DB)) + "(" + str((1.0 * len(simple_fragmenter_sorted_fragmented_and_equal_to_reference_DB)) / len(reference_DB)) + ")"
-print ''
-print 'N_structures(complete):' + str(len(right_size_for_complete_fragmenter2))
-print 'N_fragmented(complete): ' + str(len(complete_fragmenter_sorted_fragmented)) + "(" + str((1.0 * len(complete_fragmenter_sorted_fragmented)) / len(right_size_for_complete_fragmenter2)) + ")"
-print 'N_fragmented_and_equal(complete): ' + str(len(complete_fragmenter_sorted_fragmented_and_equal_to_reference_DB)) + "(" + str((1.0 * len(complete_fragmenter_sorted_fragmented_and_equal_to_reference_DB)) / len(right_size_for_complete_fragmenter2)) + ")"
-print ''
-print ''  
+print('')
+print('N_structures(simple): ' + str(len(reference_DB)))
+print('N_fragmented(simple): ' + str(len(simple_fragmenter_sorted_fragmented)) + "(" + str((1.0 * len(simple_fragmenter_sorted_fragmented)) / len(reference_DB)) + ")")
+print('N_fragmented_and_equal(simple): ' + str(len(simple_fragmenter_sorted_fragmented_and_equal_to_reference_DB)) + "(" + str((1.0 * len(simple_fragmenter_sorted_fragmented_and_equal_to_reference_DB)) / len(reference_DB)) + ")")
+print('')
+print('N_structures(complete):' + str(len(right_size_for_complete_fragmenter2)))
+print('N_fragmented(complete): ' + str(len(complete_fragmenter_sorted_fragmented)) + "(" + str((1.0 * len(complete_fragmenter_sorted_fragmented)) / len(right_size_for_complete_fragmenter2)) + ")")
+print('N_fragmented_and_equal(complete): ' + str(len(complete_fragmenter_sorted_fragmented_and_equal_to_reference_DB)) + "(" + str((1.0 * len(complete_fragmenter_sorted_fragmented_and_equal_to_reference_DB)) / len(right_size_for_complete_fragmenter2)) + ")")
+print('')
+print('')
+print('')
+print('')
 
 
 # second step: try to fragent all from the component    
@@ -421,15 +428,15 @@ combined_fragmenter.n_max_fragmentations_to_find = 1
 
 combined_fragmenter_sorted_fragmented = []
 right_size_for_combined_fragmenter  = []
-print '####################################################################'
-print 'Fragmenting the structures database with the patterns sorted (combined algorithm)'
+print('####################################################################')
+print('Fragmenting the structures database with the patterns sorted (combined algorithm)')
 i_structure = 0
 f_combined = open('structures_DB_combined_fragmentation_with_pattern_sorting_results.log','w+')
 for inchikey, SMILES, pubchem_id, empty_fragmentation in structures_DB:  
  
     i_structure = i_structure + 1
-    if i_structure % 2000 == 0:
-        print '{:2.1f} .'.format((100.0 * i_structure) / len(structures_DB)),
+    if i_structure % 4000 == 0:
+        print('{:2.1f} .'.format((100.0 * i_structure) / len(structures_DB)), end=" ")
     
     fragmentation, success = combined_fragmenter.fragment(SMILES)
     if success:
@@ -451,8 +458,8 @@ for inchikey, SMILES, pubchem_id, empty_fragmentation in structures_DB:
   
 f_combined.close()
     
-print ''
-print 'N_structures(simple): ' + str(len(right_size_for_combined_fragmenter))
-print 'N_fragmented(simple): ' + str(len(combined_fragmenter_sorted_fragmented)) + "(" + str((1.0 * len(combined_fragmenter_sorted_fragmented)) / len(right_size_for_combined_fragmenter)) + ")"
-print ''
-print '####################################################################'
+print('')
+print('N_structures(simple): ' + str(len(structures_DB)))
+print('N_fragmented(simple): ' + str(len(combined_fragmenter_sorted_fragmented)) + "(" + str((1.0 * len(combined_fragmenter_sorted_fragmented)) / len(structures_DB)) + ")")
+print('')
+print('####################################################################')

@@ -26,16 +26,26 @@ SOFTWARE.'''
     
     
 class fragmenter:
+    # tested with Python 3.6.8 and RDKit version 2017.09.3
     
     # import dependencies
-    import regex as __regex
     try:
+        import rdkit as __rdkit
         from rdkit import Chem as __Chem
-        import msgpack as __msgpack
+        import marshal as __marshal
+        import regex as __regex
+
     except:
-        raise Exception('RDkit and __msgpack have to be installed.')
+        raise Exception('rdkit, marshal and regex have to be installed.')
         
         
+    if __rdkit.rdBase.rdkitVersion != '2017.09.3':
+        raise Exception('In this code, the SMARTS are \
+analyzed for their properties. Unfortunately different rdkit versions give different values. \
+This code has only been tested on version \'2017.09.3\'.')
+    # for more details have a look at the comments in the function get_mol_with_properties_from_SMARTS
+    
+                    
     # get a molecule from a SMARTS with the properties necessary to calculate
     # more complex properties
     @classmethod
@@ -45,18 +55,38 @@ class fragmenter:
         cls.__Chem.GetSymmSSSR(mol)
         return mol   
     
-    # get a molecule ffrom a SMARTS and calculate complex properties
-    # this function could be improved by someone who knows RDkit better than myself
+    # get a molecule from a SMARTS and calculate complex properties
+    # this function could be improved by someone who knows RDkit better than me
+	# 
+	# Unfortunately it only works corrrectly with version 2017.09.3 of RDKit,
+	# for more details see the following issues:
+	# https://github.com/rdkit/rdkit/issues/2448
+	# https://github.com/rdkit/rdkit/issues/1978
+	# 
+	# if anyone finds a better way of calculating the number of
+	# bonds a SMARTS fragment has, please contact me or send a merge request
+    #
+    # if you are using conda you may install it in a new environemnt using the following command: conda install -c rdkit rdkit=2017.09.3
+	
     @classmethod
     def get_mol_with_properties_from_SMARTS(cls, SMARTS):
+        if cls.__rdkit.rdBase.rdkitVersion != '2017.09.3':
+            print('#################WARNING########################')
+            print('In this code, the SMARTS are \
+analyzed programmatically for their properties. Unfortunately different rdkit versions give different values. \
+This code has been developed with version \'2017.09.3\'.')
+            # if you are using conda you may install it in a new environemnt using the following command: conda install -c rdkit rdkit=2017.09.3
+            print('################################################')
+                  
         mol_SMARTS = fragmenter.get_mol_from_SMARTS(SMARTS)
         
         # some cleaning up
+        # conditional SMARTS are not supported
         SMARTS = SMARTS.replace('-,:', '')
         conditional_statement_exists = SMARTS.count(',') > 0
         if conditional_statement_exists:
-            print SMARTS
-            raise ValueError('Algorithm can''t handle conditional SMARTS. Please use a list of SMARTS in the fragmentation scheme to mimic conditional SMARTS.')
+            print (SMARTS)
+            raise ValueError('Algorithm can\'t handle conditional SMARTS. Please use a list of SMARTS in the fragmentation scheme to mimic conditional SMARTS.')
         
         n_atoms_defining_SMARTS = 0
         n_available_bonds = 0
@@ -97,32 +127,46 @@ class fragmenter:
                     if len(found_atoms) == 1:
                         n_atoms_defining_SMARTS -= 1
                     elif len(found_atoms) > 1:
-                        raise ValueError('Algorithm can''t handle SMARTS with 2 recursive SMARTS')
+                        raise ValueError('Algorithm can\'t handle SMARTS with 2 levels of recursion')
                     else:
                         atom.SetUnsignedProp('n_hydrogens', 0)
                         atom.SetUnsignedProp('n_available_bonds', 0)
             else:
                 
                 # get number of hydrogens from SMARTS
-                matches = cls.__regex.findall('H(\d+)', SMARTS_atom)
                 n_available_bonds_this_atom = atom.GetImplicitValence()
                 
                 n_hydrogens = 0
-                if len(matches) == 1:
-                    n_hydrogens = int(matches[0])
+                match = cls.__regex.findall('AtomHCount\s+(\d+)\s*', atom.DescribeQuery())
+                if match:
+                    n_hydrogens = int(match[0])
                     
-                n_available_bonds_this_atom += - n_hydrogens
+                n_available_bonds_this_atom -= n_hydrogens
                     
                 atom.SetUnsignedProp('n_hydrogens', n_hydrogens)
+                
+                if n_available_bonds_this_atom < 0:
+                    n_available_bonds_this_atom = 0
+                
                 atom.SetUnsignedProp('n_available_bonds', n_available_bonds_this_atom)
                 
                 if atom.GetAtomicNum() == 6:
                     n_carbons += 1
                     
                 is_within_ring = False
-                matches = cls.__regex.findall('[^!]R|^R', SMARTS_atom)
-                if matches is not None:
-                    is_within_ring = len(matches) == 1
+                match = cls.__regex.findall('AtomInNRings\s+(-?\d+)\s+(!?=)\s*', atom.DescribeQuery())
+                if match:
+                     match = match[0]
+                     n_rings = int(match[0])
+                     comparison_sign = match[1]
+                     
+                     if n_rings == -1: # if number of rings was not defined 
+                         is_within_ring = comparison_sign == '='
+                     else: # if number of rings was defined
+                         if comparison_sign == '=':
+                             is_within_ring  = n_rings != 0
+                         else:
+                             is_within_ring  = n_rings == 0
                         
                 if atom.GetIsAromatic() or is_within_ring:
                     n_atoms_in_ring += 1
@@ -159,7 +203,7 @@ class fragmenter:
                                        sub_mol_SMARTS.HasSubstructMatch(atom_with_valence_one_on_excluding_carbon))     
                 is_simple_atom = n_atoms_defining_SMARTS == 1 and sub_mol_SMARTS.HasSubstructMatch(atom_with_valence_one)
             elif len(found_atoms) > 1:
-                raise ValueError('Algorithm can''t handle SMARTS with 2 recursive SMARTS')
+                raise ValueError('Algorithm can\'t handle SMARTS with 2 recursive SMARTS')
           
         # set the gathered properties
         mol_SMARTS.SetUnsignedProp('n_hydrogens', n_hydrogens_this_molecule)
@@ -176,7 +220,7 @@ class fragmenter:
         return mol_SMARTS      
 
     # this function does a substructure match and then checks whether the match 
-    # is adjacent to previous matches or if the hydrogen number is correct
+    # is adjacent to previous matches and/or checks if the hydrogen number is correct
     @classmethod
     def get_substruct_matches(cls, mol_searched_for, mol_searched_in, atomIdxs_to_which_new_matches_have_to_be_adjacent, check_for_hydrogens = False):
         
@@ -193,6 +237,11 @@ class fragmenter:
                         # following lines are a workaround for the fact that SMARTS
                         # matching SMARTS is not working completely correctly as the number
                         # of hydrogens is ignored in some cases by RDkit
+                        # 
+                    	# for more details see the following issues:
+                    	# https://github.com/rdkit/rdkit/issues/2448
+                    	# https://github.com/rdkit/rdkit/issues/1978
+                        
                         for i in range(mol_searched_for.GetNumAtoms()):
                             atom_mol_searched_for = mol_searched_for.GetAtomWithIdx(i)
                             atom_mol_searched_in = mol_searched_in.GetAtomWithIdx(match[i])
@@ -298,7 +347,7 @@ class fragmenter:
         for SMARTS1, mol_SMARTS1 in self._fragmentation_scheme_pattern_lookup.items():
             parent_patterns_of_SMARTS1 = []
             
-            for SMARTS2, mol_SMARTS2 in self. _fragmentation_scheme_pattern_lookup.items():
+            for SMARTS2, mol_SMARTS2 in self._fragmentation_scheme_pattern_lookup.items():
                 if SMARTS1 != SMARTS2:
                     if mol_SMARTS2.GetNumAtoms() >= mol_SMARTS1.GetNumAtoms():
                         matches = fragmenter.get_substruct_matches(mol_SMARTS1, mol_SMARTS2, set(), True)
@@ -333,7 +382,7 @@ class fragmenter:
             for SMARTS, matches in temp_fragmentation.items():
                 group_number = self._fragmentation_scheme_group_number_lookup[SMARTS]
                 
-                if not fragmentation.has_key(group_number):
+                if not group_number in fragmentation:
                     fragmentation[group_number] = 0
                 
                 fragmentation[group_number] += len(matches)   
@@ -430,7 +479,7 @@ class fragmenter:
                 all_atoms_of_new_match_are_unassigned = atomIdxs_included_in_fragmentation.isdisjoint(match)
         
                 if all_atoms_of_new_match_are_unassigned:
-                    if not fragmentation.has_key(SMARTS):
+                    if not SMARTS in fragmentation:
                         fragmentation[SMARTS] = []
                         
                     fragmentation[SMARTS].append(match)
@@ -445,19 +494,18 @@ class fragmenter:
             
             atoms_missing = set(range(0, fragmenter.get_heavy_atom_count(mol_searched_in))).difference(atomIdxs_included_in_fragmentation)
                         
-            new_fragmentation = fragmenter.__msgpack.unpackb(fragmenter.__msgpack.packb(fragmentation))
+            new_fragmentation = fragmenter.__marshal.loads(fragmenter.__marshal.dumps(fragmentation))
             
             for atomIdx in atoms_missing:
                 for neighbor in mol_searched_in.GetAtomWithIdx(atomIdx).GetNeighbors():
                     for smart, atoms_found in fragmentation.items():
                         for atoms in atoms_found:
-                            atoms = list(atoms)
                             if neighbor.GetIdx() in atoms:
-                                if new_fragmentation.has_key(smart):
+                                if smart in new_fragmentation:
                                     if new_fragmentation[smart].count(atoms) > 0:
                                         new_fragmentation[smart].remove(atoms)
                                 
-                        if new_fragmentation.has_key(smart):
+                        if smart in new_fragmentation:
                             if len(new_fragmentation[smart]) == 0:
                                 new_fragmentation.pop(smart)
                                 
@@ -532,7 +580,7 @@ class fragmenter:
                         
                         for completed_fragmentation in completed_fragmentations:
                             
-                            if not completed_fragmentation.has_key(SMARTS):
+                            if not SMARTS in completed_fragmentation:
                                 continue
                             
                             if n_found_groups == 0:
@@ -548,11 +596,11 @@ class fragmenter:
                             continue
                         
                         # make a deepcopy here, otherwise the variables are modified down the road
-                        # __msgpack is used here because it works faster than copy.deepcopy
-                        this_SMARTS_fragmentation_so_far = fragmenter.__msgpack.unpackb(fragmenter.__msgpack.packb(fragmentation_so_far))
+                        # marshal is used here because it works faster than copy.deepcopy
+                        this_SMARTS_fragmentation_so_far = fragmenter.__marshal.loads(fragmenter.__marshal.dumps(fragmentation_so_far))
                         this_SMARTS_atomIdxs_included_in_fragmentation_so_far = atomIdxs_included_in_fragmentation_so_far.copy()
                         
-                        if not this_SMARTS_fragmentation_so_far.has_key(SMARTS):
+                        if not SMARTS in this_SMARTS_fragmentation_so_far:
                             this_SMARTS_fragmentation_so_far[SMARTS] = []
                             
                         this_SMARTS_fragmentation_so_far[SMARTS].append(match)
@@ -594,7 +642,7 @@ class fragmenter:
                             for found_smarts, found_matches in fragmentation_so_far.items():
                                 for found_match in found_matches:
                                     if neighbor_atom_idx in found_match:
-                                        if not incomplete_matched_groups.has_key(found_smarts):
+                                        if not found_smarts in incomplete_matched_groups:
                                             incomplete_matched_groups[found_smarts] = []
                                             
                                         if found_match not in incomplete_matched_groups[found_smarts]:
@@ -635,7 +683,7 @@ class fragmenter:
         
         n_found_SMARTS_that_are_subset = 0
         for found_SMARTS, found_matches in fragmentation.items():
-            if other_fragmentation.has_key(found_SMARTS):
+            if found_SMARTS in other_fragmentation:
                 found_matches_set = set(frozenset(i) for i in fragmentation[found_SMARTS])
                 found_other_matches_set =  set(frozenset(i) for i in other_fragmentation[found_SMARTS])
                 
@@ -648,7 +696,7 @@ class fragmenter:
     
     @classmethod
     def __is_match_contained_in_fragmentation(cls, match, SMARTS, fragmentation):
-        if not fragmentation.has_key(SMARTS):
+        if not SMARTS in fragmentation:
             return False
             
         found_matches_set = set(frozenset(i) for i in fragmentation[SMARTS])
