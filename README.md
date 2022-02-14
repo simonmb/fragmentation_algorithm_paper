@@ -1,6 +1,6 @@
 ## fragmentation_algorithm_paper
-immutable version for the following paper:
-- Title: [**Flexible Heuristic Algorithm for Automatic Molecule Fragmentation: Application to the UNIFAC Group Contribution Model**](https://doi.org/10.1186/s13321-019-0382-3))
+this is the immutable version of the algorithm for the following paper:
+- [**Flexible Heuristic Algorithm for Automatic Molecule Fragmentation: Application to the UNIFAC Group Contribution Model**](https://doi.org/10.1186/s13321-019-0382-3))
 
 # ⚠️If you are interested in a new version⚠️
 - [New version of the fragmentation algorithm](https://github.com/simonmb/fragmentation_algorithm)
